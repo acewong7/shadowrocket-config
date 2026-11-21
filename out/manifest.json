@@ -1,0 +1,8 @@
+{
+  "upstream": "https://raw.githubusercontent.com/coolxll/proxy-routing/main/templates/shadowrocket-tailscale.conf",
+  "built_at": "2026-11-21T23:17:42+08:00",
+  "sha256": "d7d351fec488b57dce9f7e01fd96d2683b429fd46607c9f2b2544dfb6c75960e",
+  "bytes": 4687,
+  "lan_cidr": "192.168.31.0/24",
+  "bypass_routes": "127.0.0.0/8, 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255/32"
+}
