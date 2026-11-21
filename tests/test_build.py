@@ -99,6 +99,31 @@ class BuildTests(unittest.TestCase):
 
         self.assertEqual(res["sha256"], hashlib.sha256(out.encode()).hexdigest())
 
+    def test_jms_group_added_to_ai_only(self):
+        fix = FIXTURE.replace(
+            "🚀 节点选择 = select, DIRECT, include-all-proxies=1",
+            "🚀 节点选择 = select, DIRECT, include-all-proxies=1\n"
+            "AI = select,PROXY,香港节点,policy-select-name=PROXY\n"
+            "YouTube = select,PROXY,香港节点,policy-select-name=PROXY",
+        )
+        _, out = self._build(fix)
+        self.assertIn("JMS 线路 = url-test,policy-regex-filter=JMS|c2s", out)
+        ai = [l for l in out.splitlines() if l.startswith("AI = ")][0]
+        self.assertIn("JMS 线路", ai)
+        self.assertIn("policy-select-name=PROXY", ai, "默认选择必须保持 PROXY")
+        yt = [l for l in out.splitlines() if l.startswith("YouTube = ")][0]
+        self.assertNotIn("JMS 线路", yt, "YouTube 不应挂 JMS")
+
+    def test_jms_patch_idempotent(self):
+        fix = FIXTURE.replace(
+            "🚀 节点选择 = select, DIRECT, include-all-proxies=1",
+            "🚀 节点选择 = select, DIRECT, include-all-proxies=1\nAI = select,PROXY,香港节点,policy-select-name=PROXY",
+        )
+        _, first = self._build(fix)
+        _, second = self._build(fix)
+        self.assertEqual(first, second)
+        self.assertEqual(second.count("JMS 线路 = url-test"), 1, "重复构建不应重复插入分组")
+
     def test_undefined_policy_rejected(self):
         bad = FIXTURE.replace("FINAL,🚀 节点选择", "FINAL,不存在的组")
         with self.assertRaises(B.BuildError):

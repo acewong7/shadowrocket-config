@@ -130,6 +130,52 @@ def _dropped(old: str) -> str:
     return ", ".join(dropped) if dropped else "（无变化）"
 
 
+JMS_GROUP_NAME = "JMS 线路"
+JMS_GROUP_LINE = (
+    f"{JMS_GROUP_NAME} = url-test,policy-regex-filter=JMS|c2s,"
+    "url=http://www.gstatic.com/generate_204,interval=600,tolerance=0,timeout=5,select=0"
+)
+# 只把这些组的候选里加入 JMS：AI 类服务吃延迟和稳定性、不吃带宽；
+# YouTube / Netflix 之类吃带宽，JMS 实测抖动时只有 0.3 MB/s，不挂进去。
+JMS_TARGET_GROUPS = ("AI",)
+
+
+def patch_groups(lines: list[str]) -> tuple[list[str], list[str]]:
+    """新增 JMS 线路组，并把它作为候选塞进指定 select 组（默认仍是 PROXY）。"""
+    changes: list[str] = []
+    out: list[str] = []
+    has_group = any(l.split("=", 1)[0].strip() == JMS_GROUP_NAME for l in lines if "=" in l)
+
+    for line in lines:
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            out.append(line)
+            continue
+        name, rest = s.split("=", 1)
+        name = name.strip()
+        if name in JMS_TARGET_GROUPS and JMS_GROUP_NAME not in rest:
+            parts = [x.strip() for x in rest.split(",")]
+            # 第一个非 key=value 的成员之后插入（通常是 PROXY）
+            idx = next(
+                (i + 1 for i, x in enumerate(parts) if "=" not in x and x.upper() == "PROXY"), 1
+            )
+            parts.insert(idx, JMS_GROUP_NAME)
+            out.append(f"{name} = " + ",".join(parts))
+            changes.append(f"{name} 组: 候选加入 {JMS_GROUP_NAME}（默认选择不变）")
+            continue
+        out.append(line)
+
+    if not has_group:
+        # 插在第一个 select 组之前，保持可读性
+        pos = next(
+            (i for i, l in enumerate(out) if l.strip() and not l.strip().startswith("#")),
+            len(out) - 1,
+        )
+        out.insert(pos, JMS_GROUP_LINE)
+        changes.append(f"新增分组 {JMS_GROUP_NAME}（policy-regex-filter=JMS|c2s）")
+    return out, changes
+
+
 def patch_rules(lines: list[str]) -> tuple[list[str], list[str]]:
     """把 Tailscale 段固定放在 [Rule] 最前面，去重后插入。"""
     changes: list[str] = []
@@ -207,6 +253,10 @@ def build(upstream: str) -> dict:
     general, ch = patch_general(sections["General"])
     changes += ch
     sections["General"] = general
+    if "Proxy Group" in sections:
+        groups, ch = patch_groups(sections["Proxy Group"])
+        changes += ch
+        sections["Proxy Group"] = groups
     rules, ch = patch_rules(sections["Rule"])
     changes += ch
     sections["Rule"] = rules
