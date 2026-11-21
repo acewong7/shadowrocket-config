@@ -1,6 +1,6 @@
 {
   "upstream": "https://raw.githubusercontent.com/Johnshall/Shadowrocket-ADBlock-Rules-Forever/master/lazy_group.conf",
-  "built_at": "2026-11-21T23:51:45+08:00",
+  "built_at": "2026-11-21T15:51:55+00:00",
   "sha256": "4699e34b8671279cb938ee92a831fa1da577a3a6f25813ebf170fafb60ec454f",
   "bytes": 28300,
   "lan_cidr": "192.168.31.0/24",
