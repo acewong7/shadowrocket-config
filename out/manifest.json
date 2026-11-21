@@ -1,8 +1,8 @@
 {
   "upstream": "https://raw.githubusercontent.com/Johnshall/Shadowrocket-ADBlock-Rules-Forever/master/lazy_group.conf",
-  "built_at": "2026-11-21T15:37:52+00:00",
-  "sha256": "ec84130ab5316cae2c6528ee28325e46c2e7fa6a9d3151fa3bac5eaea5bafd2b",
-  "bytes": 28307,
+  "built_at": "2026-11-21T23:51:45+08:00",
+  "sha256": "4699e34b8671279cb938ee92a831fa1da577a3a6f25813ebf170fafb60ec454f",
+  "bytes": 28300,
   "lan_cidr": "192.168.31.0/24",
   "bypass_routes": "10.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.0.2.0/24, 192.88.99.0/24, 198.51.100.0/24, 203.0.113.0/24, 224.0.0.0/4, 255.255.255.255/32, 239.255.255.250/32, ff02::fb/128"
 }

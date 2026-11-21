@@ -88,30 +88,36 @@ def split_sections(text: str) -> tuple[list[str], dict[str, list[str]], list[str
 
 
 def patch_general(lines: list[str]) -> tuple[list[str], list[str]]:
-    """强制写入 tun-excluded-routes，去掉 100.64/10 与 192.168/16。"""
+    """把 tun-excluded-routes 就地改成目标值（位置不动，diff 最小）。"""
     changes: list[str] = []
-    kept: list[str] = []
-    had = False
+    out: list[str] = []
+    replaced = False
     for line in lines:
         if line.strip().lower().startswith("tun-excluded-routes"):
-            had = True
             old = line.split("=", 1)[1].strip() if "=" in line else ""
-            if old != BYPASS_ROUTES:
-                changes.append(f"tun-excluded-routes: {old!r} -> {BYPASS_ROUTES!r}")
-            else:
-                changes.append("tun-excluded-routes: 已是目标值")
-            continue
-        kept.append(line)
-    if not had:
-        changes.append(f"tun-excluded-routes: 缺失 -> 新增 {BYPASS_ROUTES!r}")
-    kept.append(f"tun-excluded-routes = {BYPASS_ROUTES}")
-    # 去掉紧邻的空行重复
-    out: list[str] = []
-    for line in kept:
-        if line.strip() == "" and out and out[-1].strip() == "":
+            new_line = f"tun-excluded-routes = {BYPASS_ROUTES}"
+            out.append(new_line)
+            replaced = True
+            changes.append(
+                "tun-excluded-routes: 已是目标值"
+                if old == BYPASS_ROUTES
+                else f"tun-excluded-routes: 去掉 {_dropped(old)}"
+            )
             continue
         out.append(line)
+    if not replaced:
+        while out and out[-1].strip() == "":
+            out.pop()
+        out.append(f"tun-excluded-routes = {BYPASS_ROUTES}")
+        changes.append(f"tun-excluded-routes: 上游缺失 -> 新增")
     return out, changes
+
+
+def _dropped(old: str) -> str:
+    """列出被我们剔除的网段，便于构建日志一眼看清。"""
+    keep = {x.strip() for x in BYPASS_ROUTES.split(",")}
+    dropped = [x.strip() for x in old.split(",") if x.strip() and x.strip() not in keep]
+    return ", ".join(dropped) if dropped else "（无变化）"
 
 
 def patch_rules(lines: list[str]) -> tuple[list[str], list[str]]:
@@ -203,8 +209,11 @@ def build(upstream: str) -> dict:
     if lines and lines[-1].strip():
         lines.append("")
     for name in order:
+        body = list(sections[name])
+        while body and body[-1].strip() == "":
+            body.pop()
         lines.append(f"[{name}]")
-        lines.extend(sections[name])
+        lines.extend(body)
         lines.append("")
     text = "\n".join(lines).rstrip() + "\n"
 
