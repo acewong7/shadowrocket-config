@@ -1,0 +1,5 @@
+out/shadowrocket.conf
+out/manifest.json
+__pycache__/
+*.pyc
+.upstream-cache/
