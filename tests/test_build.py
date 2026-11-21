@@ -57,9 +57,17 @@ class BuildTests(unittest.TestCase):
     def test_bypass_drops_tailnet_and_lan_ranges(self):
         _, out = self._build()
         line = [l for l in out.splitlines() if l.startswith("tun-excluded-routes")][0]
-        self.assertNotIn("100.64.0.0/10", line)
-        self.assertNotIn("192.168.0.0/16", line)
-        self.assertEqual(line.split("=", 1)[1].strip(), B.BYPASS_ROUTES)
+        for bad in B.FORBIDDEN_BYPASS:
+            self.assertNotIn(bad, line)
+        # 上游的其它旁路段必须原样保留，不能被我们整体替换掉
+        for keep in ("10.0.0.0/8", "172.16.0.0/12"):   # fixture 里存在的其它网段
+            self.assertIn(keep, line)
+
+    def test_upstream_extra_bypass_ranges_survive(self):
+        extra = FIXTURE.replace("172.16.0.0/12,", "172.16.0.0/12, 198.18.0.0/15,")
+        _, out = self._build(extra)
+        line = [l for l in out.splitlines() if l.startswith("tun-excluded-routes")][0]
+        self.assertIn("198.18.0.0/15", line, "上游新增的旁路段不应被丢掉")
 
     def test_tailscale_rules_precede_ruleset_and_are_deduped(self):
         _, out = self._build()

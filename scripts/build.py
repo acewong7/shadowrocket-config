@@ -34,13 +34,18 @@ LAN_CIDR = "192.168.31.0/24"
 
 # TUN 旁路只留这些；100.64.0.0/10 与 192.168.0.0/16 必须去掉，
 # 否则 Tailnet 地址和家里 LAN 都进不了隧道。
-# 与 Johnshall 默认值一致，唯一区别是去掉 192.168.0.0/16：
-# 家里 LAN 必须走 TUN 才能经 Tailscale 子网路由到达。
-BYPASS_ROUTES = (
+# 上游缺失这一行时的兜底值（通常用不到，Johnshall 会写）。
+BYPASS_FALLBACK = (
     "10.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, "
     "192.0.2.0/24, 192.88.99.0/24, 198.51.100.0/24, 203.0.113.0/24, 224.0.0.0/4, "
     "255.255.255.255/32, 239.255.255.250/32, ff02::fb/128"
 )
+
+# 必须从 TUN 旁路里剔除的网段：
+#   100.64.0.0/10  Tailscale 地址段，留着就连不上 Tailnet
+#   192.168.0.0/16 家里 LAN，留着就到不了 192.168.31.x
+# 只删这两条，上游新增的其它旁路段一律保留。
+FORBIDDEN_BYPASS = ("100.64.0.0/10", "192.168.0.0/16")
 
 TAILSCALE_BLOCK = f"""# >>> hermes:tailscale（scripts/build.py 维护，勿手改）
 DOMAIN-SUFFIX,ts.net,TAILSCALE
@@ -88,28 +93,33 @@ def split_sections(text: str) -> tuple[list[str], dict[str, list[str]], list[str
 
 
 def patch_general(lines: list[str]) -> tuple[list[str], list[str]]:
-    """把 tun-excluded-routes 就地改成目标值（位置不动，diff 最小）。"""
+    """从上游的 tun-excluded-routes 里**减去**禁用网段，其余原样保留。"""
     changes: list[str] = []
     out: list[str] = []
     replaced = False
     for line in lines:
         if line.strip().lower().startswith("tun-excluded-routes"):
             old = line.split("=", 1)[1].strip() if "=" in line else ""
-            new_line = f"tun-excluded-routes = {BYPASS_ROUTES}"
+            kept = [
+                x.strip()
+                for x in old.split(",")
+                if x.strip() and x.strip() not in FORBIDDEN_BYPASS
+            ]
+            new_line = "tun-excluded-routes = " + ", ".join(kept)
             out.append(new_line)
             replaced = True
+            dropped = [x.strip() for x in old.split(",") if x.strip() in FORBIDDEN_BYPASS]
             changes.append(
-                "tun-excluded-routes: 已是目标值"
-                if old == BYPASS_ROUTES
-                else f"tun-excluded-routes: 去掉 {_dropped(old)}"
+                "tun-excluded-routes: 上游本来就没有禁用网段" if not dropped
+                else "tun-excluded-routes: 剔除 " + ", ".join(dropped)
             )
             continue
         out.append(line)
     if not replaced:
         while out and out[-1].strip() == "":
             out.pop()
-        out.append(f"tun-excluded-routes = {BYPASS_ROUTES}")
-        changes.append(f"tun-excluded-routes: 上游缺失 -> 新增")
+        out.append(f"tun-excluded-routes = {BYPASS_FALLBACK}")
+        changes.append("tun-excluded-routes: 上游缺失 -> 插入兜底值")
     return out, changes
 
 
@@ -226,11 +236,10 @@ def build(upstream: str) -> dict:
         json.dumps(
             {
                 "upstream": upstream,
-                "built_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
                 "sha256": digest,
                 "bytes": len(text.encode()),
                 "lan_cidr": LAN_CIDR,
-                "bypass_routes": BYPASS_ROUTES,
+                "forbidden_bypass": list(FORBIDDEN_BYPASS),
             },
             ensure_ascii=False,
             indent=2,
@@ -252,7 +261,7 @@ def check() -> int:
         errs.append("缺少 tun-excluded-routes")
     else:
         val = m.group(1)
-        for bad in ("100.64.0.0/10", "192.168.0.0/16"):
+        for bad in FORBIDDEN_BYPASS:
             if bad in val:
                 errs.append(f"tun-excluded-routes 仍包含 {bad}")
     lines = text.splitlines()
