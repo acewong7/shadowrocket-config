@@ -138,6 +138,40 @@ def patch_rules(lines: list[str]) -> tuple[list[str], list[str]]:
     return new_body, changes
 
 
+BUILTIN_POLICIES = {"DIRECT", "PROXY", "REJECT", "TAILSCALE", "REJECT-TINYGIF"}
+
+
+def validate_policies(sections: dict[str, list[str]]) -> list[str]:
+    """规则里引用的策略必须是已定义的组或内置策略，否则该规则会静默失效。"""
+    groups: set[str] = set()
+    for line in sections.get("Proxy Group", []):
+        if line.strip() and not line.strip().startswith("#") and "=" in line:
+            groups.add(line.split("=", 1)[0].strip())
+
+    known = {g.upper() for g in groups} | BUILTIN_POLICIES
+    problems: list[str] = []
+    for line in sections.get("Rule", []):
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        kind = s.split(",", 1)[0]
+        if kind in ("AND", "OR", "NOT"):
+            continue
+        parts = s.split(",")
+        if len(parts) == 2:                      # FINAL / MATCH 这类只有两段
+            policy = parts[1]
+        elif len(parts) >= 3:
+            policy = next(
+                (p for p in parts[2:] if p and p != "no-resolve" and not p.startswith("http")),
+                None,
+            )
+        else:
+            continue
+        if policy and policy.upper() not in known:
+            problems.append(f"规则引用了未定义的策略 {policy!r}: {s[:70]}")
+    return problems
+
+
 def sanitize(text: str) -> None:
     for i, line in enumerate(text.splitlines(), 1):
         if line.strip().startswith("#"):        # 注释里的示例不算凭据
@@ -160,6 +194,10 @@ def build(upstream: str) -> dict:
     rules, ch = patch_rules(sections["Rule"])
     changes += ch
     sections["Rule"] = rules
+
+    problems = validate_policies(sections)
+    if problems:
+        raise BuildError("策略引用校验失败:\n  " + "\n  ".join(problems))
 
     lines = list(head)
     if lines and lines[-1].strip():

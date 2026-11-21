@@ -91,6 +91,11 @@ class BuildTests(unittest.TestCase):
 
         self.assertEqual(res["sha256"], hashlib.sha256(out.encode()).hexdigest())
 
+    def test_undefined_policy_rejected(self):
+        bad = FIXTURE.replace("FINAL,🚀 节点选择", "FINAL,不存在的组")
+        with self.assertRaises(B.BuildError):
+            self._build(bad)
+
     def test_missing_rule_section_fails(self):
         with self.assertRaises(B.BuildError):
             self._build("# only comments\n[General]\n")
