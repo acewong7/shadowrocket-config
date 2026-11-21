@@ -80,6 +80,11 @@ class BuildTests(unittest.TestCase):
         with self.assertRaises(B.BuildError):
             self._build(bad)
 
+    def test_comment_placeholders_allowed(self):
+        ok = FIXTURE.replace("[Proxy]\n", "[Proxy]\n# 节点名称=ss,地址,端口,password=密码\n")
+        _, out = self._build(ok)
+        self.assertIn("password=密码", out)
+
     def test_manifest_sha_matches_output(self):
         res, out = self._build()
         import hashlib

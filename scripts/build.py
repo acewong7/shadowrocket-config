@@ -26,7 +26,7 @@ OUT = ROOT / "out" / "shadowrocket.conf"
 MANIFEST = ROOT / "out" / "manifest.json"
 
 DEFAULT_UPSTREAM = (
-    "https://raw.githubusercontent.com/coolxll/proxy-routing/main/templates/shadowrocket-tailscale.conf"
+    "https://raw.githubusercontent.com/Johnshall/Shadowrocket-ADBlock-Rules-Forever/master/lazy_group.conf"
 )
 
 # 家里 LAN 要在隧道里，才能在外面访问 31 网段
@@ -34,7 +34,13 @@ LAN_CIDR = "192.168.31.0/24"
 
 # TUN 旁路只留这些；100.64.0.0/10 与 192.168.0.0/16 必须去掉，
 # 否则 Tailnet 地址和家里 LAN 都进不了隧道。
-BYPASS_ROUTES = "127.0.0.0/8, 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255/32"
+# 与 Johnshall 默认值一致，唯一区别是去掉 192.168.0.0/16：
+# 家里 LAN 必须走 TUN 才能经 Tailscale 子网路由到达。
+BYPASS_ROUTES = (
+    "10.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, "
+    "192.0.2.0/24, 192.88.99.0/24, 198.51.100.0/24, 203.0.113.0/24, 224.0.0.0/4, "
+    "255.255.255.255/32, 239.255.255.250/32, ff02::fb/128"
+)
 
 TAILSCALE_BLOCK = f"""# >>> hermes:tailscale（scripts/build.py 维护，勿手改）
 DOMAIN-SUFFIX,ts.net,TAILSCALE
@@ -134,6 +140,8 @@ def patch_rules(lines: list[str]) -> tuple[list[str], list[str]]:
 
 def sanitize(text: str) -> None:
     for i, line in enumerate(text.splitlines(), 1):
+        if line.strip().startswith("#"):        # 注释里的示例不算凭据
+            continue
         if SECRET_RE.search(line) and "raw.githubusercontent.com" not in line:
             raise BuildError(f"检测到疑似凭据（第 {i} 行），拒绝写入公开仓库: {line.strip()[:80]}")
 
@@ -200,12 +208,18 @@ def check() -> int:
         for bad in ("100.64.0.0/10", "192.168.0.0/16"):
             if bad in val:
                 errs.append(f"tun-excluded-routes 仍包含 {bad}")
-    rule_idx = text.index("[Rule]")
+    lines = text.splitlines()
+    rule_start = next(i for i, l in enumerate(lines) if l.strip() == "[Rule]")
+    first_ruleset = next(
+        (i for i in range(rule_start, len(lines)) if lines[i].strip().startswith("RULE-SET,")), None
+    )
     for need in ("ts.net,TAILSCALE", "100.64.0.0/10,TAILSCALE", f"{LAN_CIDR},TAILSCALE"):
-        pos = text.find(need)
-        if pos < 0:
+        idx = next(
+            (i for i, l in enumerate(lines) if need in l and not l.strip().startswith("#")), None
+        )
+        if idx is None:
             errs.append(f"缺少规则 {need}")
-        elif text.find("RULE-SET", rule_idx) > 0 and pos > text.find("RULE-SET", rule_idx):
+        elif first_ruleset is not None and idx > first_ruleset:
             errs.append(f"规则 {need} 排在 RULE-SET 之后（会被私有地址先命中）")
     try:
         sanitize(text)

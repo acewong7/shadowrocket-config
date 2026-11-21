@@ -11,6 +11,16 @@ Shadowrocket 的「更新配置」会用远端版本整体覆盖本地文件（�
 
 解法是把配置变成自己的：上游 → `scripts/build.py` → `out/shadowrocket.conf`，设备只认这个产物。
 
+## 上游
+
+默认 `Johnshall/Shadowrocket-ADBlock-Rules-Forever` 的 **`lazy_group.conf`**（★32k，每日 8 点重建）：
+
+- 国内外划分（中国网站直连、国外走代理）+ 按服务分组（AI / YouTube / Netflix / Telegram / Spotify …），分组规则来自 blackmatrix7 的 RULE-SET，AI 组来自 iab0x00
+- 只有 28KB、370 行，diff 干净；对比 `sr_cnip_ad.conf`（2.1MB、5.4 万行内联规则）好维护得多
+- `[Proxy]` 段全部是注释示例，不含任何真实节点
+
+换上游：`python3 scripts/build.py --upstream <url>`，或在 `scripts/build.py` 里改 `DEFAULT_UPSTREAM`。
+
 ## 产物做了什么
 
 固定写死两件事，其余原样继承上游：
